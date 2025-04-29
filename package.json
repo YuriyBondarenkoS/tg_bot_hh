@@ -4,8 +4,5 @@
     "description": "Telegram bot for hh.ru vacancies",
     "scripts": {
       "start": "bash start.sh"
-    },
-    "engines": {
-      "node": "14.x"
     }
   }
