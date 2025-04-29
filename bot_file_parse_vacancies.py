@@ -15,7 +15,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Токен бота
-TOKEN = BOT_TOKEN #"7404822521:AAEg_yhZ6OP8XDB2FzGwQTqSRfeDIen84AM"
+TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("Переменная окружения BOT_TOKEN не установлена")
 
 def extract_filters(text):
     salary_match = re.search(r'зарплата\s*>\s*(\d+)', text, re.IGNORECASE)
