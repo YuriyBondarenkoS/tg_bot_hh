@@ -156,7 +156,7 @@ def handle_message(update: Update, context: CallbackContext):
                     clean_text,
                     page=page,
                     salary_from=filters["salary"],
-                    employment=filters["employment"]
+                    employment=filters["employment"],
                     area=area_id
                 )
                 if data:
