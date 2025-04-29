@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Токен бота
+# Токен бота 1
 TOKEN = "7404822521:AAEg_yhZ6OP8XDB2FzGwQTqSRfeDIen84AM"
 
 def get_vacancies(search_text: str, page: int = 0, per_page: int = 50):
