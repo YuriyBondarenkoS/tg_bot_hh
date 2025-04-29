@@ -5,6 +5,7 @@ import logging
 from time import sleep
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from bs4 import BeautifulSoup
 import pandas as pd
 
 # Настройка логирования
@@ -19,6 +20,27 @@ TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("Переменная окружения BOT_TOKEN не установлена")
 
+def extract_area(text):
+    for city, area_id in AREA_MAP.items():
+        if city in text.lower():
+            return area_id, city
+    return 113, None  # По умолчанию — вся Россия
+
+def clean_html(html_text):
+    return BeautifulSoup(html_text, "html.parser").get_text()
+
+def get_full_description(vacancy_id):
+    try:
+        url = f"https://api.hh.ru/vacancies/{vacancy_id}"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("description", "Нет полного описания")
+    except Exception as e:
+        logger.warning(f"Не удалось получить полное описание для id {vacancy_id}: {e}")
+        return "Нет полного описания"
+
 def extract_filters(text):
     salary_match = re.search(r'зарплата\s*>\s*(\d+)', text, re.IGNORECASE)
     employment_match = re.search(r'тип\s+занятости\s*:\s*(\w+)', text, re.IGNORECASE)
@@ -29,7 +51,7 @@ def extract_filters(text):
     }
     return filters
 
-def get_vacancies(search_text: str, page: int = 0, per_page: int = 50, salary_from=None, employment=None):
+def get_vacancies(search_text: str, page: int = 0, per_page: int = 50, salary_from=None, employment=None, area=1):
     """Получает вакансии с hh.ru"""
     try:
         url = "https://api.hh.ru/vacancies"
@@ -37,7 +59,7 @@ def get_vacancies(search_text: str, page: int = 0, per_page: int = 50, salary_fr
             "text": search_text,
             "page": page,
             "per_page": per_page,
-            "area": 1,  # 1 - Москва
+            "area": area,  # 1 - Москва по умолчанию
         }
         if salary_from:
             params["salary"] = salary_from
@@ -73,7 +95,7 @@ def parse_vacancies(data: dict):
                 "name": item.get("name", "Название не указано"),
                 "company": item.get("employer", {}).get("name", "Компания не указана"),
                 "salary": salary_info,
-                "description": item.get("snippet", {}).get("responsibility", "Нет описания"),
+                "description": clean_html(get_full_description(item["id"])),
                 "url": item.get("alternate_url", "#"),
             })
         except Exception as e:
@@ -118,6 +140,9 @@ def handle_message(update: Update, context: CallbackContext):
         search_query = update.message.text
         filters = extract_filters(search_query)
 
+        area_id, area_name = extract_area(search_query)
+        clean_text = re.sub(r'в\s+' + area_name, '', clean_text, flags=re.IGNORECASE) if area_name else clean_text
+
         clean_text = re.sub(r'зарплата\s*>\s*\d+', '', search_query, flags=re.IGNORECASE)
         clean_text = re.sub(r'тип\s+занятости\s*:\s*\w+', '', clean_text, flags=re.IGNORECASE).strip()
 
@@ -132,6 +157,7 @@ def handle_message(update: Update, context: CallbackContext):
                     page=page,
                     salary_from=filters["salary"],
                     employment=filters["employment"]
+                    area=area_id
                 )
                 if data:
                     all_vacancies.extend(parse_vacancies(data))
