@@ -48,6 +48,14 @@ SCHEDULE_MAP = {
     "вахтовый метод": "flyInFlyOut"
 }
 
+EMPLOYMENT_MAP = {
+    "полная занятость": "full",
+    "частичная занятость": "part",
+    "проектная занятость": "project",
+    "волонтёрство": "volunteer",
+    "стажировка": "probation"
+}
+
 def extract_area(text):
     for city, area_id in AREA_MAP.items():
         if city in text.lower():
@@ -71,13 +79,24 @@ def get_full_description(vacancy_id):
 
 def extract_filters(text):
     salary_match = re.search(r'зарплата\s*>\s*(\d+)', text, re.IGNORECASE)
-    employment_match = re.search(r'тип\s+занятости\s*:\s*(\w+)', text, re.IGNORECASE)
     schedule_match = re.search(r'график\s+работы\s*:\s*([\w\s\-]+)', text, re.IGNORECASE)
+
+    employment = None
+    for rus, eng in EMPLOYMENT_MAP.items():
+        if rus in text.lower():
+            employment = eng
+            break
+
+    schedule = None
+    for rus, eng in SCHEDULE_MAP.items():
+        if rus in text.lower():
+            schedule = eng
+            break
 
     filters = {
         "salary": int(salary_match.group(1)) if salary_match else None,
-        "employment": employment_match.group(1) if employment_match else None,
-        "schedule": schedule_match.group(1).strip().lower() if schedule_match else None
+        "employment": employment,
+        "schedule": schedule
     }
     return filters
 
@@ -163,7 +182,9 @@ def start(update: Update, context: CallbackContext):
             "Дополнительно можно указать:\n"
             "- зарплата > 100000\n"
             "- тип занятости: full\n"
-            "Пример: Python зарплата > 150000 тип занятости: part"
+            "- график работы: удалённая работа\n"
+            "- город: Краснодар\n"
+            "Пример: Python Краснодар зарплата > 150000 тип занятости: full график работы: удалённая работа"
         )
     except Exception as e:
         logger.error(f"Ошибка в команде /start: {e}")
@@ -175,13 +196,44 @@ def handle_message(update: Update, context: CallbackContext):
         filters = extract_filters(search_query)
 
         area_id, area_name = extract_area(search_query)
+
+        # Формируем текст с распознанными фильтрами
+        filters_text = []
+
+        if filters.get("salary"):
+            filters_text.append(f"💰 Зарплата от: {filters['salary']} руб.")
+
+        if filters.get("employment"):
+            for k, v in EMPLOYMENT_MAP.items():
+                if v == filters['employment']:
+                    filters_text.append(f"🧾 Тип занятости: {k}")
+                    break
+
+        if filters.get("schedule"):
+            for k, v in SCHEDULE_MAP.items():
+                if v == filters['schedule']:
+                    filters_text.append(f"📅 График работы: {k}")
+                    break
+
+        if area_name:
+            filters_text.append(f"📍 Город: {area_name.title()}")
+
+        # Отправка пользователю
+        if filters_text:
+            update.message.reply_text("🔎 Найдены фильтры:\n" + "\n".join(filters_text))
+
         clean_text = search_query 
 
         if area_name:
             clean_text = re.sub(r'в\s+' + re.escape(area_name), '', clean_text, flags=re.IGNORECASE)
 
         clean_text = re.sub(r'зарплата\s*>\s*\d+', '', clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r'тип\s+занятости\s*:\s*\w+', '', clean_text, flags=re.IGNORECASE).strip()
+
+        for rus in EMPLOYMENT_MAP:
+            clean_text = re.sub(rus, '', clean_text, flags=re.IGNORECASE)
+
+        for rus in SCHEDULE_MAP:
+            clean_text = re.sub(rus, '', clean_text, flags=re.IGNORECASE)
 
 
         logger.info(f"Получен запрос: {search_query}")
