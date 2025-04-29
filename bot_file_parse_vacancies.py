@@ -6,23 +6,13 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Callb
 # Этапы диалога
 ASK_KEYWORD, ASK_SALARY, ASK_EMPLOYMENT, ASK_SCHEDULE, ASK_CITY = range(5)
 
-AREA_MAP = {
-    "москва": 1,
-    "санкт-петербург": 2,
-    "новосибирск": 4,
-    "екатеринбург": 3,
-    "нижний новгород": 66,
-    "казань": 88,
-    "челябинск": 104,
-    "омск": 68,
-    "самара": 78,
-    "ростов-на-дону": 76,
-    "уфа": 99,
-    "красноярск": 54,
-    "пермь": 72,
-    "воронеж": 106,
-    "волгоград": 102,
-    "краснодар": 53
+# Карты фильтров
+EMPLOYMENT_MAP = {
+    "Полная занятость": "full",
+    "Частичная занятость": "part",
+    "Проектная занятость": "project",
+    "Волонтёрство": "volunteer",
+    "Стажировка": "probation"
 }
 
 SCHEDULE_MAP = {
@@ -33,12 +23,13 @@ SCHEDULE_MAP = {
     "Вахтовый метод": "flyInFlyOut"
 }
 
-EMPLOYMENT_MAP = {
-    "Полная занятость": "full",
-    "Частичная занятость": "part",
-    "Проектная занятость": "project",
-    "Волонтёрство": "volunteer",
-    "Стажировка": "probation"
+AREA_MAP = {
+    "Москва": 1,
+    "Санкт-Петербург": 2,
+    "Новосибирск": 4,
+    "Екатеринбург": 3,
+    "Краснодар": 53,
+    "Россия (вся)": 113
 }
 
 # Настройка логирования
@@ -69,7 +60,7 @@ def ask_employment(update: Update, context: CallbackContext) -> int:
         return ASK_SALARY
 
     user_data_store[update.effective_chat.id]["salary"] = salary
-    reply_keyboard = [[KeyboardButton(option)] for option in EMPLOYMENT_MAP.keys()]
+    reply_keyboard = [[option] for option in EMPLOYMENT_MAP.keys()]
     update.message.reply_text(
         "📄 Выберите тип занятости:",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -79,11 +70,13 @@ def ask_employment(update: Update, context: CallbackContext) -> int:
 def ask_schedule(update: Update, context: CallbackContext) -> int:
     employment = update.message.text.strip()
     if employment not in EMPLOYMENT_MAP:
-        update.message.reply_text("❗ Пожалуйста, выберите тип занятости из предложенных вариантов:")
+        reply_keyboard = [[option] for option in EMPLOYMENT_MAP.keys()]
+        update.message.reply_text("❗ Пожалуйста, выберите тип занятости из предложенных вариантов:",
+                                  reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True))
         return ASK_EMPLOYMENT
 
     user_data_store[update.effective_chat.id]["employment"] = EMPLOYMENT_MAP[employment]
-    reply_keyboard = [[KeyboardButton(option)] for option in SCHEDULE_MAP.keys()]
+    reply_keyboard = [[option] for option in SCHEDULE_MAP.keys()]
     update.message.reply_text(
         "📅 Выберите график работы:",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -93,19 +86,27 @@ def ask_schedule(update: Update, context: CallbackContext) -> int:
 def ask_city(update: Update, context: CallbackContext) -> int:
     schedule = update.message.text.strip()
     if schedule not in SCHEDULE_MAP:
-        update.message.reply_text("❗ Пожалуйста, выберите график работы из предложенных вариантов:")
+        reply_keyboard = [[option] for option in SCHEDULE_MAP.keys()]
+        update.message.reply_text("❗ Пожалуйста, выберите график работы из предложенных вариантов:",
+                                  reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True))
         return ASK_SCHEDULE
 
     user_data_store[update.effective_chat.id]["schedule"] = SCHEDULE_MAP[schedule]
-    cities = ", ".join(AREA_MAP.keys())
-    update.message.reply_text(f"📍 Укажите город (возможные варианты: {cities}):", reply_markup=ReplyKeyboardRemove())
+    reply_keyboard = [[option] for option in AREA_MAP.keys()]
+    update.message.reply_text("📍 Выберите город:",
+                              reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True))
     return ASK_CITY
 
 def perform_search(update: Update, context: CallbackContext) -> int:
     city = update.message.text.strip()
-    area_id = AREA_MAP.get(city.title(), 113)  # По умолчанию Россия
-    user_data_store[update.effective_chat.id]["area"] = area_id
+    area_id = AREA_MAP.get(city.title())
+    if not area_id:
+        reply_keyboard = [[option] for option in AREA_MAP.keys()]
+        update.message.reply_text("❗ Пожалуйста, выберите город из предложенных вариантов:",
+                                  reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True))
+        return ASK_CITY
 
+    user_data_store[update.effective_chat.id]["area"] = area_id
     data = user_data_store[update.effective_chat.id]
     summary = (
         f"🔍 Поиск вакансий:\n"
@@ -116,7 +117,7 @@ def perform_search(update: Update, context: CallbackContext) -> int:
         f"Город (ID): {data['area']}\n\n"
         "(Тут будет запрос к API и вывод вакансий)"
     )
-    update.message.reply_text(summary)
+    update.message.reply_text(summary, reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext) -> int:
