@@ -115,9 +115,7 @@ def get_vacancies(search_text: str, page: int = 0, per_page: int = 50, salary_fr
         if employment:
             params["employment"] = employment
         if schedule:
-            schedule_api = SCHEDULE_MAP.get(schedule.lower())
-            if schedule_api:
-                params["schedule"] = schedule_api
+            params["schedule"] = schedule_api
 
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, params=params, headers=headers, timeout=10)
