@@ -73,6 +73,7 @@ def parse_vacancies(data: dict):
                 "name": item.get("name", "Название не указано"),
                 "company": item.get("employer", {}).get("name", "Компания не указана"),
                 "salary": salary_info,
+                "description": item.get("snippet", {}).get("responsibility", "Нет описания"),
                 "url": item.get("alternate_url", "#"),
             })
         except Exception as e:
@@ -86,8 +87,8 @@ def save_to_xlsx(vacancies: list, filename: str = "vacancies.xlsx"):
         filepath = os.path.join(script_dir, filename)
         
         # Создаем DataFrame
-        df = pd.DataFrame(vacancies, columns=['name', 'company', 'salary', 'url'])
-        df.columns = ['Должность', 'Компания', 'Зарплата', 'Ссылка']
+        df = pd.DataFrame(vacancies, columns=['name', 'company', 'salary', 'description', 'url'])
+        df.columns = ['Должность', 'Компания', 'Зарплата', 'Описание', 'Ссылка']
         
         # Сохраняем в XLSX
         df.to_excel(filepath, index=False, engine='openpyxl')
