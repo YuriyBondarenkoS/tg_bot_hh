@@ -40,6 +40,14 @@ AREA_MAP = {
     "краснодар": 53  # ← добавлен Краснодар
 }
 
+SCHEDULE_MAP = {
+    "полный день": "fullDay",
+    "сменный график": "shift",
+    "гибкий график": "flexible",
+    "удалённая работа": "remote",
+    "вахтовый метод": "flyInFlyOut"
+}
+
 def extract_area(text):
     for city, area_id in AREA_MAP.items():
         if city in text.lower():
@@ -64,14 +72,16 @@ def get_full_description(vacancy_id):
 def extract_filters(text):
     salary_match = re.search(r'зарплата\s*>\s*(\d+)', text, re.IGNORECASE)
     employment_match = re.search(r'тип\s+занятости\s*:\s*(\w+)', text, re.IGNORECASE)
+    schedule_match = re.search(r'график\s+работы\s*:\s*([\w\s\-]+)', text, re.IGNORECASE)
 
     filters = {
         "salary": int(salary_match.group(1)) if salary_match else None,
         "employment": employment_match.group(1) if employment_match else None
+        "schedule": schedule_match.group(1).strip().lower() if schedule_match else None
     }
     return filters
 
-def get_vacancies(search_text: str, page: int = 0, per_page: int = 50, salary_from=None, employment=None, area=1):
+def get_vacancies(search_text: str, page: int = 0, per_page: int = 50, salary_from=None, employment=None, schedule=None, area=1):
     """Получает вакансии с hh.ru"""
     try:
         url = "https://api.hh.ru/vacancies"
@@ -85,6 +95,10 @@ def get_vacancies(search_text: str, page: int = 0, per_page: int = 50, salary_fr
             params["salary"] = salary_from
         if employment:
             params["employment"] = employment
+        if schedule:
+            schedule_api = SCHEDULE_MAP.get(schedule.lower())
+            if schedule_api:
+                params["schedule"] = schedule_api
 
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, params=params, headers=headers, timeout=10)
@@ -181,6 +195,7 @@ def handle_message(update: Update, context: CallbackContext):
                     page=page,
                     salary_from=filters["salary"],
                     employment=filters["employment"],
+                    schedule=filters["schedule"],
                     area=area_id
                 )
                 if data:
