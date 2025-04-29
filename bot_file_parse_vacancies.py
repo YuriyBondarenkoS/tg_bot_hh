@@ -1,25 +1,10 @@
 import os
-import re
 import logging
-import requests
-from time import sleep
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import (
-    Updater, CommandHandler, MessageHandler, Filters,
-    CallbackContext, ConversationHandler
-)
-from bs4 import BeautifulSoup
-import pandas as pd
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ConversationHandler
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-TOKEN = os.environ.get("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("Переменная окружения BOT_TOKEN не установлена")
+# Этапы диалога
+ASK_KEYWORD, ASK_SALARY, ASK_EMPLOYMENT, ASK_SCHEDULE, ASK_CITY = range(5)
 
 AREA_MAP = {
     "москва": 1,
@@ -56,130 +41,86 @@ EMPLOYMENT_MAP = {
     "Стажировка": "probation"
 }
 
-(KEYWORD, SALARY, EMPLOYMENT, SCHEDULE, CITY) = range(5)
-user_data = {}
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("Введите ключевое слово для поиска вакансий:")
-    return KEYWORD
+# Получение токена
+TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN не задан в переменных окружения")
 
-def keyword_handler(update: Update, context: CallbackContext):
-    user_data[update.effective_user.id] = {"keyword": update.message.text}
-    update.message.reply_text("Укажите зарплату от (числом):")
-    return SALARY
+user_data_store = {}
 
-def salary_handler(update: Update, context: CallbackContext):
+def start(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text("👋 Привет! Давай подберем тебе вакансии.\n\nВведите ключевое слово для поиска (например: Python разработчик):")
+    return ASK_KEYWORD
+
+def ask_salary(update: Update, context: CallbackContext) -> int:
+    user_data_store[update.effective_chat.id] = {"keyword": update.message.text.strip()}
+    update.message.reply_text("💰 Укажите минимальную зарплату в рублях (например: 100000):")
+    return ASK_SALARY
+
+def ask_employment(update: Update, context: CallbackContext) -> int:
     try:
-        user_data[update.effective_user.id]["salary"] = int(update.message.text)
+        salary = int(update.message.text.strip())
     except ValueError:
-        update.message.reply_text("Пожалуйста, введите число")
-        return SALARY
+        update.message.reply_text("❗ Пожалуйста, введите корректное число для зарплаты:")
+        return ASK_SALARY
 
-    keyboard = [[k] for k in EMPLOYMENT_MAP.keys()]
+    user_data_store[update.effective_chat.id]["salary"] = salary
+    reply_keyboard = [[KeyboardButton(option)] for option in EMPLOYMENT_MAP.keys()]
     update.message.reply_text(
-        "Выберите тип занятости:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        "📄 Выберите тип занятости:",
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
     )
-    return EMPLOYMENT
+    return ASK_EMPLOYMENT
 
-def employment_handler(update: Update, context: CallbackContext):
-    user_data[update.effective_user.id]["employment"] = EMPLOYMENT_MAP.get(update.message.text)
+def ask_schedule(update: Update, context: CallbackContext) -> int:
+    employment = update.message.text.strip()
+    if employment not in EMPLOYMENT_MAP:
+        update.message.reply_text("❗ Пожалуйста, выберите тип занятости из предложенных вариантов:")
+        return ASK_EMPLOYMENT
 
-    keyboard = [[k] for k in SCHEDULE_MAP.keys()]
+    user_data_store[update.effective_chat.id]["employment"] = EMPLOYMENT_MAP[employment]
+    reply_keyboard = [[KeyboardButton(option)] for option in SCHEDULE_MAP.keys()]
     update.message.reply_text(
-        "Выберите график работы:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        "📅 Выберите график работы:",
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
     )
-    return SCHEDULE
+    return ASK_SCHEDULE
 
-def schedule_handler(update: Update, context: CallbackContext):
-    user_data[update.effective_user.id]["schedule"] = SCHEDULE_MAP.get(update.message.text)
-    update.message.reply_text("Укажите город:")
-    return CITY
+def ask_city(update: Update, context: CallbackContext) -> int:
+    schedule = update.message.text.strip()
+    if schedule not in SCHEDULE_MAP:
+        update.message.reply_text("❗ Пожалуйста, выберите график работы из предложенных вариантов:")
+        return ASK_SCHEDULE
 
-def city_handler(update: Update, context: CallbackContext):
-    city = update.message.text.lower()
-    user_data[update.effective_user.id]["area"] = AREA_MAP.get(city, 113)
-    user_data[update.effective_user.id]["city_name"] = city.title()
-    update.message.reply_text("Начинаю поиск вакансий...")
-    perform_search(update, context)
+    user_data_store[update.effective_chat.id]["schedule"] = SCHEDULE_MAP[schedule]
+    cities = ", ".join(AREA_MAP.keys())
+    update.message.reply_text(f"📍 Укажите город (возможные варианты: {cities}):", reply_markup=ReplyKeyboardRemove())
+    return ASK_CITY
+
+def perform_search(update: Update, context: CallbackContext) -> int:
+    city = update.message.text.strip()
+    area_id = AREA_MAP.get(city.title(), 113)  # По умолчанию Россия
+    user_data_store[update.effective_chat.id]["area"] = area_id
+
+    data = user_data_store[update.effective_chat.id]
+    summary = (
+        f"🔍 Поиск вакансий:\n"
+        f"Ключевое слово: {data['keyword']}\n"
+        f"Зарплата от: {data['salary']} руб.\n"
+        f"Тип занятости: {data['employment']}\n"
+        f"График работы: {data['schedule']}\n"
+        f"Город (ID): {data['area']}\n\n"
+        "(Тут будет запрос к API и вывод вакансий)"
+    )
+    update.message.reply_text(summary)
     return ConversationHandler.END
 
-def clean_html(html_text):
-    return BeautifulSoup(html_text, "html.parser").get_text()
-
-def get_full_description(vacancy_id):
-    try:
-        url = f"https://api.hh.ru/vacancies/{vacancy_id}"
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-        response.raise_for_status()
-        return response.json().get("description", "Нет описания")
-    except:
-        return "Нет описания"
-
-def get_vacancies(params):
-    all_vacancies = []
-    for page in range(3):
-        try:
-            url = "https://api.hh.ru/vacancies"
-            query = {
-                "text": params["keyword"],
-                "area": params["area"],
-                "salary": params["salary"],
-                "employment": params["employment"],
-                "schedule": params["schedule"],
-                "page": page,
-                "per_page": 50
-            }
-            response = requests.get(url, params=query, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            for item in data.get("items", []):
-                salary = item.get("salary")
-                salary_info = "Не указана"
-                if salary:
-                    salary_info = f"{salary.get('from', '?')} - {salary.get('to', '?')} {salary.get('currency', '')}"
-                all_vacancies.append({
-                    "name": item.get("name", "Название не указано"),
-                    "company": item.get("employer", {}).get("name", "Компания не указана"),
-                    "salary": salary_info,
-                    "description": clean_html(get_full_description(item["id"])),
-                    "url": item.get("alternate_url", "#")
-                })
-            sleep(1)
-        except Exception as e:
-            logger.warning(f"Ошибка при загрузке страницы {page}: {e}")
-    return all_vacancies
-
-def save_to_xlsx(vacancies, filename="vacancies.xlsx"):
-    try:
-        df = pd.DataFrame(vacancies)
-        df.columns = ['Должность', 'Компания', 'Зарплата', 'Описание', 'Ссылка']
-        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
-        df.to_excel(filepath, index=False, engine='openpyxl')
-        return filepath
-    except Exception as e:
-        logger.error(f"Ошибка при сохранении файла: {e}")
-        return None
-
-def perform_search(update: Update, context: CallbackContext):
-    params = user_data[update.effective_user.id]
-    vacancies = get_vacancies(params)
-    if not vacancies:
-        update.message.reply_text("Вакансии не найдены.")
-        return
-
-    filepath = save_to_xlsx(vacancies)
-    if filepath:
-        with open(filepath, 'rb') as f:
-            update.message.reply_document(f, filename="vacancies.xlsx", caption=f"Найдено {len(vacancies)} вакансий")
-
-        preview = "\n".join(f"{i+1}. {v['name']} ({v['company']}) - {v['salary']}\n{v['url']}" for i, v in enumerate(vacancies[:5]))
-        update.message.reply_text(f"📋 Примеры вакансий:\n\n{preview}")
-
-
-def cancel(update: Update, context: CallbackContext):
-    update.message.reply_text("Поиск отменён.")
+def cancel(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text("❌ Поиск отменен.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 def main():
@@ -189,18 +130,19 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            KEYWORD: [MessageHandler(Filters.text & ~Filters.command, keyword_handler)],
-            SALARY: [MessageHandler(Filters.text & ~Filters.command, salary_handler)],
-            EMPLOYMENT: [MessageHandler(Filters.text & ~Filters.command, employment_handler)],
-            SCHEDULE: [MessageHandler(Filters.text & ~Filters.command, schedule_handler)],
-            CITY: [MessageHandler(Filters.text & ~Filters.command, city_handler)],
+            ASK_KEYWORD: [MessageHandler(Filters.text & ~Filters.command, ask_salary)],
+            ASK_SALARY: [MessageHandler(Filters.text & ~Filters.command, ask_employment)],
+            ASK_EMPLOYMENT: [MessageHandler(Filters.text & ~Filters.command, ask_schedule)],
+            ASK_SCHEDULE: [MessageHandler(Filters.text & ~Filters.command, ask_city)],
+            ASK_CITY: [MessageHandler(Filters.text & ~Filters.command, perform_search)],
         },
         fallbacks=[CommandHandler("cancel", cancel)]
     )
 
     dp.add_handler(conv_handler)
+
     updater.start_polling()
     updater.idle()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
