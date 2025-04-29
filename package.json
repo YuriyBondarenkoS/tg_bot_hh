@@ -1,8 +1,8 @@
 {
-    "name": "tg-bot-hh",
-    "version": "1.0.0",
-    "description": "Telegram bot for hh.ru vacancies",
-    "scripts": {
-      "start": "bash start.sh"
-    }
+  "name": "tg-bot-hh",
+  "version": "1.0.0",
+  "description": "Telegram bot for hh.ru vacancies",
+  "scripts": {
+    "start": "bash start.sh"
   }
+}
