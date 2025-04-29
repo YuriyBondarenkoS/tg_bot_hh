@@ -16,7 +16,17 @@ logger = logging.getLogger(__name__)
 # Токен бота
 TOKEN = "7404822521:AAEg_yhZ6OP8XDB2FzGwQTqSRfeDIen84AM"
 
-def get_vacancies(search_text: str, page: int = 0, per_page: int = 50):
+def extract_filters(text):
+    salary_match = re.search(r'зарплата\s*>\s*(\d+)', text, re.IGNORECASE)
+    employment_match = re.search(r'тип\s+занятости\s*:\s*(\w+)', text, re.IGNORECASE)
+
+    filters = {
+        "salary": int(salary_match.group(1)) if salary_match else None,
+        "employment": employment_match.group(1) if employment_match else None
+    }
+    return filters
+
+def get_vacancies(search_text: str, page: int = 0, per_page: int = 50, salary_from=None, employment=None):
     """Получает вакансии с hh.ru"""
     try:
         url = "https://api.hh.ru/vacancies"
@@ -26,6 +36,11 @@ def get_vacancies(search_text: str, page: int = 0, per_page: int = 50):
             "per_page": per_page,
             "area": 1,  # 1 - Москва
         }
+        if salary_from:
+            params["salary"] = salary_from
+        if employment:
+            params["employment"] = employment
+
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, params=params, headers=headers, timeout=10)
         response.raise_for_status()
@@ -84,7 +99,11 @@ def start(update: Update, context: CallbackContext):
     try:
         update.message.reply_text(
             "Привет! Я бот для поиска вакансий с hh.ru\n"
-            "Отправь мне название профессии для поиска (например: Python разработчик)"
+            "Отправь мне название профессии (например: Python разработчик)\n\n"
+            "Дополнительно можно указать:\n"
+            "- зарплата > 100000\n"
+            "- тип занятости: full\n"
+            "Пример: Python зарплата > 150000 тип занятости: part"
         )
     except Exception as e:
         logger.error(f"Ошибка в команде /start: {e}")
@@ -93,13 +112,23 @@ def handle_message(update: Update, context: CallbackContext):
     """Обработчик текстовых сообщений"""
     try:
         search_query = update.message.text
+        filters = extract_filters(search_query)
+
+        clean_text = re.sub(r'зарплата\s*>\s*\d+', '', search_query, flags=re.IGNORECASE)
+        clean_text = re.sub(r'тип\s+занятости\s*:\s*\w+', '', clean_text, flags=re.IGNORECASE).strip()
+
         logger.info(f"Получен запрос: {search_query}")
         update.message.reply_text(f"🔍 Ищу вакансии по запросу: {search_query}...")
         
         all_vacancies = []
         for page in range(3):  # Парсим 3 страницы
             try:
-                data = get_vacancies(search_query, page=page)
+                data = get_vacancies(
+                    clean_text,
+                    page=page,
+                    salary_from=filters["salary"],
+                    employment=filters["employment"]
+                )
                 if data:
                     all_vacancies.extend(parse_vacancies(data))
                 sleep(1)  # Задержка между запросами
