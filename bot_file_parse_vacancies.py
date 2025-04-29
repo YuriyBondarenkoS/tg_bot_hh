@@ -115,10 +115,12 @@ def get_vacancies(search_text: str, page: int = 0, per_page: int = 50, salary_fr
         if employment:
             params["employment"] = employment
         if schedule:
-            params["schedule"] = schedule_api
+            params["schedule"] = schedule
 
         headers = {'User-Agent': 'Mozilla/5.0'}
+        logger.info(f"[HH API] Параметры запроса: {params}")
         response = requests.get(url, params=params, headers=headers, timeout=10)
+        logger.info(f"[HH API] URL запроса: {response.url}")
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -233,7 +235,6 @@ def handle_message(update: Update, context: CallbackContext):
         for rus in SCHEDULE_MAP:
             clean_text = re.sub(rus, '', clean_text, flags=re.IGNORECASE)
 
-
         logger.info(f"Получен запрос: {search_query}")
         update.message.reply_text(f"🔍 Ищу вакансии по запросу: {search_query}...")
         
@@ -253,6 +254,8 @@ def handle_message(update: Update, context: CallbackContext):
                 sleep(1)  # Задержка между запросами
             except Exception as e:
                 logger.warning(f"Ошибка при обработке страницы {page}: {e}")
+            
+            logger.info(f"Поиск вакансий (страница {page}): text='{clean_text.strip()}', salary={filters['salary']}, employment={filters['employment']}, schedule={filters['schedule']}, area={area_id}")
         
         if not all_vacancies:
             update.message.reply_text("😕 Вакансий не найдено")
