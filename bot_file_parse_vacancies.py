@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import logging
 from time import sleep
@@ -14,7 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Токен бота
-TOKEN = "7404822521:AAEg_yhZ6OP8XDB2FzGwQTqSRfeDIen84AM"
+TOKEN = BOT_TOKEN #"7404822521:AAEg_yhZ6OP8XDB2FzGwQTqSRfeDIen84AM"
 
 def extract_filters(text):
     salary_match = re.search(r'зарплата\s*>\s*(\d+)', text, re.IGNORECASE)
