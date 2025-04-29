@@ -76,7 +76,7 @@ def extract_filters(text):
 
     filters = {
         "salary": int(salary_match.group(1)) if salary_match else None,
-        "employment": employment_match.group(1) if employment_match else None
+        "employment": employment_match.group(1) if employment_match else None,
         "schedule": schedule_match.group(1).strip().lower() if schedule_match else None
     }
     return filters
