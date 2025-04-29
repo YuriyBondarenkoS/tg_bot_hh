@@ -141,10 +141,14 @@ def handle_message(update: Update, context: CallbackContext):
         filters = extract_filters(search_query)
 
         area_id, area_name = extract_area(search_query)
-        clean_text = re.sub(r'в\s+' + area_name, '', clean_text, flags=re.IGNORECASE) if area_name else clean_text
+        clean_text = search_query 
 
-        clean_text = re.sub(r'зарплата\s*>\s*\d+', '', search_query, flags=re.IGNORECASE)
+        if area_name:
+            clean_text = re.sub(r'в\s+' + re.escape(area_name), '', clean_text, flags=re.IGNORECASE)
+
+        clean_text = re.sub(r'зарплата\s*>\s*\d+', '', clean_text, flags=re.IGNORECASE)
         clean_text = re.sub(r'тип\s+занятости\s*:\s*\w+', '', clean_text, flags=re.IGNORECASE).strip()
+
 
         logger.info(f"Получен запрос: {search_query}")
         update.message.reply_text(f"🔍 Ищу вакансии по запросу: {search_query}...")
